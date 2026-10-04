@@ -1,0 +1,907 @@
+{
+  "info": {
+    "name": "S11 API Cafetería",
+    "description": "Doce casos de la matriz S11. Cada request reinicia los datos de prueba y no depende de un id de una ejecución anterior.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "orderId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "01-Paginacion",
+      "item": [
+        {
+          "name": "[S11-09] Listar productos con paginación válida",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/productos?page=1&limit=2"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/test/reset\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: { mode: \"raw\", raw: \"{}\" }",
+                  "}, function (err, res) {",
+                  "  if (err) throw err;",
+                  "  if (res.code !== 200) throw new Error(\"No se pudieron reiniciar los datos.\");",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const page = pm.response.json();",
+                  "",
+                  "pm.test(\"S11-09 la primera página trae dos productos y el total\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(page.page).to.eql(1);",
+                  "  pm.expect(page.limit).to.eql(2);",
+                  "  pm.expect(page.total).to.eql(4);",
+                  "  pm.expect(page.count).to.eql(2);",
+                  "  pm.expect(page.data).to.have.lengthOf(2);",
+                  "  pm.expect(page.data[0].name).to.eql(\"Café Americano\");",
+                  "  pm.expect(page.data[1].name).to.eql(\"Cappuccino\");",
+                  "});",
+                  "",
+                  "pm.sendRequest(pm.environment.get(\"baseUrl\") + \"/api/productos?page=2&limit=2\", function (err, res) {",
+                  "  pm.test(\"S11-09 la segunda página trae el resto del menú\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    const body = res.json();",
+                  "    pm.expect(res.code).to.eql(200);",
+                  "    pm.expect(body.page).to.eql(2);",
+                  "    pm.expect(body.count).to.eql(2);",
+                  "    pm.expect(body.total).to.eql(4);",
+                  "    pm.expect(body.data[0].name).to.eql(\"Latte\");",
+                  "    pm.expect(body.data[1].name).to.eql(\"Pastel de chocolate\");",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.sendRequest(pm.environment.get(\"baseUrl\") + \"/api/productos?page=3&limit=2\", function (err, res) {",
+                  "  pm.test(\"S11-09 una página fuera de rango llega vacía y conserva el total\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    const body = res.json();",
+                  "    pm.expect(res.code).to.eql(200);",
+                  "    pm.expect(body.page).to.eql(3);",
+                  "    pm.expect(body.limit).to.eql(2);",
+                  "    pm.expect(body.total).to.eql(4);",
+                  "    pm.expect(body.count).to.eql(0);",
+                  "    pm.expect(body.data).to.eql([]);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[S11-10] Rechazar paginación inválida",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/productos?page=0&limit=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"S11-10 rechaza una página menor que 1\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"La página debe ser un entero mayor o igual que 1.\");",
+                  "});",
+                  "",
+                  "pm.sendRequest(pm.environment.get(\"baseUrl\") + \"/api/productos?page=1&limit=0\", function (err, res) {",
+                  "  pm.test(\"S11-10 rechaza un límite en cero\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    pm.expect(res.code).to.eql(400);",
+                  "    pm.expect(res.json().error).to.eql(\"El límite debe ser un entero entre 1 y 20.\");",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.sendRequest(pm.environment.get(\"baseUrl\") + \"/api/productos?page=1&limit=21\", function (err, res) {",
+                  "  pm.test(\"S11-10 rechaza un límite mayor que 20\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    pm.expect(res.code).to.eql(400);",
+                  "    pm.expect(res.json().error).to.eql(\"El límite debe ser un entero entre 1 y 20.\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02-Autenticacion",
+      "item": [
+        {
+          "name": "[S11-05] Rechazar pedido sin credenciales",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [{ \"productId\": 1, \"quantity\": 1 }]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/test/reset\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: { mode: \"raw\", raw: \"{}\" }",
+                  "}, function (err, res) {",
+                  "  if (err) throw err;",
+                  "  if (res.code !== 200) throw new Error(\"No se pudieron reiniciar los datos.\");",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"S11-05 responde 401 si no hay token\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"Falta el token de autenticación.\");",
+                  "});",
+                  "",
+                  "pm.sendRequest(pm.environment.get(\"baseUrl\") + \"/api/orders\", function (err, res) {",
+                  "  pm.test(\"S11-05 no guarda el pedido cuando faltan credenciales\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    pm.expect(res.json()).to.eql([]);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[S11-06] Rechazar token inválido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{invalidToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [{ \"productId\": 1, \"quantity\": 1 }]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/test/reset\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: { mode: \"raw\", raw: \"{}\" }",
+                  "}, function (err, res) {",
+                  "  if (err) throw err;",
+                  "  if (res.code !== 200) throw new Error(\"No se pudieron reiniciar los datos.\");",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"S11-06 responde 401 si el token no existe\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"El token no es válido.\");",
+                  "});",
+                  "",
+                  "pm.sendRequest(pm.environment.get(\"baseUrl\") + \"/api/orders\", function (err, res) {",
+                  "  pm.test(\"S11-06 no guarda el pedido con un token inválido\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    pm.expect(res.json()).to.eql([]);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[S11-07] Negar acceso a un pedido ajeno",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{unauthorizedToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos/{{orderId}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/test/reset\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: { mode: \"raw\", raw: \"{}\" }",
+                  "}, function (err, res) {",
+                  "  if (err) throw err;",
+                  "  if (res.code !== 200) throw new Error(\"No se pudieron reiniciar los datos.\");",
+                  "  pm.sendRequest({",
+                  "    url: baseUrl + \"/api/pedidos\",",
+                  "    method: \"POST\",",
+                  "    header: {",
+                  "      \"Content-Type\": \"application/json\",",
+                  "      Authorization: \"Bearer \" + pm.environment.get(\"authToken\")",
+                  "    },",
+                  "    body: {",
+                  "      mode: \"raw\",",
+                  "      raw: JSON.stringify({ items: [{ productId: 1, quantity: 1 }] })",
+                  "    }",
+                  "  }, function (err2, created) {",
+                  "    if (err2) throw err2;",
+                  "    if (created.code !== 201) throw new Error(\"No se pudo preparar el pedido: \" + created.text());",
+                  "    pm.collectionVariables.set(\"orderId\", String(created.json().id));",
+                  "  });",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"S11-07 niega el pedido a otro usuario\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"No puedes consultar un pedido de otro usuario.\");",
+                  "});",
+                  "",
+                  "pm.sendRequest({",
+                  "  url: pm.environment.get(\"baseUrl\") + \"/api/pedidos/\" + pm.collectionVariables.get(\"orderId\"),",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: \"Bearer \" + pm.environment.get(\"authToken\") }",
+                  "}, function (err, res) {",
+                  "  pm.test(\"S11-07 el pedido sí existe para su dueño\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    pm.expect(res.code).to.eql(200);",
+                  "    pm.expect(res.json().owner).to.eql(pm.environment.get(\"authorizedUser\"));",
+                  "    pm.expect(res.json().id).to.eql(Number(pm.collectionVariables.get(\"orderId\")));",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03-Pedidos",
+      "item": [
+        {
+          "name": "[S11-01] Crear pedido autorizado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [{ \"productId\": 1, \"quantity\": 1 }]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/test/reset\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: { mode: \"raw\", raw: \"{}\" }",
+                  "}, function (err, res) {",
+                  "  if (err) throw err;",
+                  "  if (res.code !== 200) throw new Error(\"No se pudieron reiniciar los datos.\");",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test(\"S11-01 crea el pedido del usuario autorizado\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(body.id).to.be.a(\"number\");",
+                  "  pm.expect(body.code).to.eql(\"ORD-\" + body.id);",
+                  "  pm.expect(body.status).to.eql(\"confirmed\");",
+                  "  pm.expect(body.owner).to.eql(pm.environment.get(\"authorizedUser\"));",
+                  "  pm.expect(body.totalCents).to.eql(3500);",
+                  "  pm.expect(body.total).to.eql(\"35.00\");",
+                  "  pm.expect(body.items).to.have.lengthOf(1);",
+                  "  pm.expect(body.items[0].productId).to.eql(1);",
+                  "  pm.expect(body.items[0].name).to.eql(\"Café Americano\");",
+                  "});",
+                  "",
+                  "pm.sendRequest(pm.environment.get(\"baseUrl\") + \"/api/orders\", function (err, res) {",
+                  "  pm.test(\"S11-01 el pedido queda guardado\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    pm.expect(res.code).to.eql(200);",
+                  "    pm.expect(res.json()).to.have.lengthOf(1);",
+                  "    pm.expect(res.json()[0].id).to.eql(body.id);",
+                  "    pm.expect(res.json()[0].totalCents).to.eql(3500);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[S11-02] Verificar el pedido y el stock",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos/{{orderId}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/test/reset\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: { mode: \"raw\", raw: \"{}\" }",
+                  "}, function (err, res) {",
+                  "  if (err) throw err;",
+                  "  if (res.code !== 200) throw new Error(\"No se pudieron reiniciar los datos.\");",
+                  "  pm.sendRequest({",
+                  "    url: baseUrl + \"/api/pedidos\",",
+                  "    method: \"POST\",",
+                  "    header: {",
+                  "      \"Content-Type\": \"application/json\",",
+                  "      Authorization: \"Bearer \" + pm.environment.get(\"authToken\")",
+                  "    },",
+                  "    body: {",
+                  "      mode: \"raw\",",
+                  "      raw: JSON.stringify({",
+                  "        items: [",
+                  "          { productId: 1, quantity: 1 },",
+                  "          { productId: 2, quantity: 2 }",
+                  "        ]",
+                  "      })",
+                  "    }",
+                  "  }, function (err2, created) {",
+                  "    if (err2) throw err2;",
+                  "    if (created.code !== 201) throw new Error(\"No se pudo preparar el pedido: \" + created.text());",
+                  "    pm.collectionVariables.set(\"orderId\", String(created.json().id));",
+                  "  });",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test(\"S11-02 el pedido guardado tiene el total calculado\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(body.id).to.eql(Number(pm.collectionVariables.get(\"orderId\")));",
+                  "  pm.expect(body.totalCents).to.eql(12500);",
+                  "  pm.expect(body.total).to.eql(\"125.00\");",
+                  "  pm.expect(body.status).to.eql(\"confirmed\");",
+                  "  pm.expect(body.owner).to.eql(pm.environment.get(\"authorizedUser\"));",
+                  "  pm.expect(body.items).to.have.lengthOf(2);",
+                  "  pm.expect(body.items.map(function (item) { return item.productId; })).to.have.members([1, 2]);",
+                  "});",
+                  "",
+                  "pm.sendRequest(pm.environment.get(\"baseUrl\") + \"/api/products\", function (err, res) {",
+                  "  pm.test(\"S11-02 el stock bajó según lo pedido\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    const products = res.json();",
+                  "    const americano = products.find(function (item) { return item.name === \"Café Americano\"; });",
+                  "    const cappuccino = products.find(function (item) { return item.name === \"Cappuccino\"; });",
+                  "    pm.expect(americano.stock).to.eql(19);",
+                  "    pm.expect(cappuccino.stock).to.eql(13);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[S11-03] Rechazar cantidad inválida",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [{ \"productId\": 1, \"quantity\": 0 }]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/test/reset\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: { mode: \"raw\", raw: \"{}\" }",
+                  "}, function (err, res) {",
+                  "  if (err) throw err;",
+                  "  if (res.code !== 200) throw new Error(\"No se pudieron reiniciar los datos.\");",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"S11-03 rechaza la cantidad en cero\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"La cantidad debe ser un entero mayor que cero.\");",
+                  "});",
+                  "",
+                  "pm.sendRequest(pm.environment.get(\"baseUrl\") + \"/api/orders\", function (err, res) {",
+                  "  pm.test(\"S11-03 no guarda un pedido inválido\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    pm.expect(res.json()).to.eql([]);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[S11-04] Rechazar pedido sin productos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/test/reset\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: { mode: \"raw\", raw: \"{}\" }",
+                  "}, function (err, res) {",
+                  "  if (err) throw err;",
+                  "  if (res.code !== 200) throw new Error(\"No se pudieron reiniciar los datos.\");",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"S11-04 exige los productos del pedido\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"El pedido no puede estar vacío.\");",
+                  "});",
+                  "",
+                  "pm.sendRequest(pm.environment.get(\"baseUrl\") + \"/api/orders\", function (err, res) {",
+                  "  pm.test(\"S11-04 no guarda un pedido vacío\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    pm.expect(res.json()).to.eql([]);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[S11-08] Consultar un pedido inexistente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos/99999"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/test/reset\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: { mode: \"raw\", raw: \"{}\" }",
+                  "}, function (err, res) {",
+                  "  if (err) throw err;",
+                  "  if (res.code !== 200) throw new Error(\"No se pudieron reiniciar los datos.\");",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"S11-08 responde 404 cuando el pedido no existe\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error).to.eql(\"No se encontró el pedido.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04-Idempotencia",
+      "item": [
+        {
+          "name": "[S11-11] Repetir el cambio de estado",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos/{{orderId}}/estado",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"listo\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/test/reset\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: { mode: \"raw\", raw: \"{}\" }",
+                  "}, function (err, res) {",
+                  "  if (err) throw err;",
+                  "  if (res.code !== 200) throw new Error(\"No se pudieron reiniciar los datos.\");",
+                  "  pm.sendRequest({",
+                  "    url: baseUrl + \"/api/pedidos\",",
+                  "    method: \"POST\",",
+                  "    header: {",
+                  "      \"Content-Type\": \"application/json\",",
+                  "      Authorization: \"Bearer \" + pm.environment.get(\"authToken\")",
+                  "    },",
+                  "    body: {",
+                  "      mode: \"raw\",",
+                  "      raw: JSON.stringify({ items: [{ productId: 1, quantity: 1 }] })",
+                  "    }",
+                  "  }, function (err2, created) {",
+                  "    if (err2) throw err2;",
+                  "    if (created.code !== 201) throw new Error(\"No se pudo preparar el pedido: \" + created.text());",
+                  "    pm.collectionVariables.set(\"orderId\", String(created.json().id));",
+                  "  });",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const first = pm.response.json();",
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "const orderId = pm.collectionVariables.get(\"orderId\");",
+                  "",
+                  "pm.test(\"S11-11 la primera asignación deja el pedido en listo\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(first.status).to.eql(\"listo\");",
+                  "  pm.expect(first.totalCents).to.eql(3500);",
+                  "  pm.expect(first.id).to.eql(Number(orderId));",
+                  "});",
+                  "",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/pedidos/\" + orderId + \"/estado\",",
+                  "  method: \"PUT\",",
+                  "  header: {",
+                  "    \"Content-Type\": \"application/json\",",
+                  "    Authorization: \"Bearer \" + pm.environment.get(\"authToken\")",
+                  "  },",
+                  "  body: { mode: \"raw\", raw: JSON.stringify({ status: \"listo\" }) }",
+                  "}, function (err, secondRes) {",
+                  "  pm.test(\"S11-11 la repetición responde el mismo estado y el mismo total\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    const second = secondRes.json();",
+                  "    pm.expect(secondRes.code).to.eql(200);",
+                  "    pm.expect(second.status).to.eql(\"listo\");",
+                  "    pm.expect(second.totalCents).to.eql(first.totalCents);",
+                  "    pm.expect(second.id).to.eql(first.id);",
+                  "    pm.expect(second.items).to.have.lengthOf(1);",
+                  "  });",
+                  "",
+                  "  pm.sendRequest({",
+                  "    url: baseUrl + \"/api/pedidos/\" + orderId,",
+                  "    method: \"GET\",",
+                  "    header: { Authorization: \"Bearer \" + pm.environment.get(\"authToken\") }",
+                  "  }, function (err2, savedRes) {",
+                  "    pm.test(\"S11-11 el efecto final sigue en listo\", function () {",
+                  "      pm.expect(err2).to.eql(null);",
+                  "      const saved = savedRes.json();",
+                  "      pm.expect(savedRes.code).to.eql(200);",
+                  "      pm.expect(saved.status).to.eql(\"listo\");",
+                  "      pm.expect(saved.totalCents).to.eql(3500);",
+                  "      pm.expect(saved.items).to.have.lengthOf(1);",
+                  "      pm.expect(saved.items[0].productId).to.eql(1);",
+                  "    });",
+                  "",
+                  "    pm.sendRequest(baseUrl + \"/api/products\", function (err3, productsRes) {",
+                  "      pm.test(\"S11-11 repetir el estado no vuelve a descontar stock\", function () {",
+                  "        pm.expect(err3).to.eql(null);",
+                  "        const americano = productsRes.json().find(function (item) { return item.id === 1; });",
+                  "        pm.expect(americano.stock).to.eql(19);",
+                  "      });",
+                  "",
+                  "      pm.sendRequest(baseUrl + \"/api/orders\", function (err4, ordersRes) {",
+                  "        pm.test(\"S11-11 no se creó otro pedido\", function () {",
+                  "          pm.expect(err4).to.eql(null);",
+                  "          pm.expect(ordersRes.json()).to.have.lengthOf(1);",
+                  "        });",
+                  "      });",
+                  "    });",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05-Esquemas",
+      "item": [
+        {
+          "name": "[S11-12] Validar esquemas de éxito y error",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos/{{orderId}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + \"/api/test/reset\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: { mode: \"raw\", raw: \"{}\" }",
+                  "}, function (err, res) {",
+                  "  if (err) throw err;",
+                  "  if (res.code !== 200) throw new Error(\"No se pudieron reiniciar los datos.\");",
+                  "  pm.sendRequest({",
+                  "    url: baseUrl + \"/api/pedidos\",",
+                  "    method: \"POST\",",
+                  "    header: {",
+                  "      \"Content-Type\": \"application/json\",",
+                  "      Authorization: \"Bearer \" + pm.environment.get(\"authToken\")",
+                  "    },",
+                  "    body: {",
+                  "      mode: \"raw\",",
+                  "      raw: JSON.stringify({ items: [{ productId: 1, quantity: 1 }] })",
+                  "    }",
+                  "  }, function (err2, created) {",
+                  "    if (err2) throw err2;",
+                  "    if (created.code !== 201) throw new Error(\"No se pudo preparar el pedido: \" + created.text());",
+                  "    pm.collectionVariables.set(\"orderId\", String(created.json().id));",
+                  "  });",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test(\"S11-12 el pedido cumple el esquema de éxito\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(body).to.have.keys(\"id\", \"code\", \"totalCents\", \"total\", \"status\", \"owner\", \"createdAt\", \"items\");",
+                  "  pm.expect(Number.isInteger(body.id)).to.eql(true);",
+                  "  pm.expect(body.code).to.match(/^ORD-\\d+$/);",
+                  "  pm.expect(Number.isInteger(body.totalCents)).to.eql(true);",
+                  "  pm.expect(body.total).to.match(/^\\d+\\.\\d{2}$/);",
+                  "  pm.expect([\"confirmed\", \"preparando\", \"listo\"]).to.include(body.status);",
+                  "  pm.expect(body.owner).to.be.a(\"string\");",
+                  "  pm.expect(body.createdAt).to.match(/^\\d{4}-\\d{2}-\\d{2}T/);",
+                  "  pm.expect(body.items).to.be.an(\"array\").that.is.not.empty;",
+                  "  body.items.forEach(function (item) {",
+                  "    pm.expect(item).to.have.keys(\"productId\", \"name\", \"quantity\", \"unitPriceCents\", \"subtotalCents\");",
+                  "    pm.expect(Number.isInteger(item.productId)).to.eql(true);",
+                  "    pm.expect(item.name).to.be.a(\"string\");",
+                  "    pm.expect(item.quantity, \"quantity\").to.be.a(\"number\");",
+                  "    pm.expect(Number.isInteger(item.quantity), \"quantity entero\").to.eql(true);",
+                  "    pm.expect(item.quantity).to.be.above(0);",
+                  "    pm.expect(Number.isInteger(item.unitPriceCents)).to.eql(true);",
+                  "    pm.expect(Number.isInteger(item.subtotalCents)).to.eql(true);",
+                  "  });",
+                  "});",
+                  "",
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "",
+                  "pm.sendRequest(baseUrl + \"/api/productos?page=1&limit=5\", function (err, pageRes) {",
+                  "  pm.test(\"S11-12 la página de productos cumple el esquema\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    pm.expect(pageRes.code).to.eql(200);",
+                  "    const page = pageRes.json();",
+                  "    pm.expect(page).to.have.keys(\"data\", \"page\", \"limit\", \"total\", \"count\");",
+                  "    pm.expect(Number.isInteger(page.page)).to.eql(true);",
+                  "    pm.expect(Number.isInteger(page.limit)).to.eql(true);",
+                  "    pm.expect(Number.isInteger(page.total)).to.eql(true);",
+                  "    pm.expect(Number.isInteger(page.count)).to.eql(true);",
+                  "    pm.expect(page.count).to.eql(page.data.length);",
+                  "    pm.expect(page.data).to.be.an(\"array\").that.is.not.empty;",
+                  "    page.data.forEach(function (product) {",
+                  "      pm.expect(product).to.have.keys(\"id\", \"name\", \"priceCents\", \"stock\");",
+                  "      pm.expect(Number.isInteger(product.id)).to.eql(true);",
+                  "      pm.expect(product.name).to.be.a(\"string\");",
+                  "      pm.expect(Number.isInteger(product.priceCents)).to.eql(true);",
+                  "      pm.expect(Number.isInteger(product.stock)).to.eql(true);",
+                  "    });",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.sendRequest(baseUrl + \"/api/pedidos/\" + pm.collectionVariables.get(\"orderId\"), function (err, errorRes) {",
+                  "  pm.test(\"S11-12 el error cumple el esquema\", function () {",
+                  "    pm.expect(err).to.eql(null);",
+                  "    pm.expect(errorRes.code).to.eql(401);",
+                  "    const errorBody = errorRes.json();",
+                  "    pm.expect(errorBody).to.have.keys(\"error\");",
+                  "    pm.expect(errorBody.error).to.be.a(\"string\");",
+                  "    pm.expect(errorBody.error.length).to.be.above(0);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

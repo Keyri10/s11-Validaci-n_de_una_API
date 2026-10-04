@@ -1,0 +1,44 @@
+name: Cypress E2E
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  e2e:
+    name: Pruebas E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Ejecutar Cypress
+        uses: cypress-io/github-action@v7
+        with:
+          install: false
+          start: npm start
+          wait-on: http://localhost:3000
+          wait-on-timeout: 120
+          browser: electron
+
+      - name: Guardar screenshots y videos si hay fallos
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-evidencia
+          path: |
+            cypress/screenshots
+            cypress/videos
+          if-no-files-found: ignore
+          retention-days: 14

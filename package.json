@@ -1,0 +1,27 @@
+{
+  "name": "s11-cafeteria-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pedidos de cafetería de la S10, con la API validada en Postman y OpenAPI para la S11",
+  "scripts": {
+    "dev": "node --watch server/index.js",
+    "start": "node server/index.js",
+    "build": "node scripts/build.js",
+    "test:e2e": "cypress run",
+    "test:e2e:open": "cypress open",
+    "db:reset": "node server/reset.js",
+    "verify": "start-server-and-test start http://localhost:3000 test:e2e"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "cypress": "^16.1.0",
+    "start-server-and-test": "^3.0.12",
+    "typescript": "^7.0.2"
+  }
+}

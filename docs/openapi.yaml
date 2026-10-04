@@ -1,0 +1,454 @@
+openapi: 3.1.0
+info:
+  title: API de pedidos de cafetería
+  version: 1.0.0
+  description: |
+    Contrato OpenAPI 3.1 de la Semana 11.
+    La API es la de la aplicación de pedidos de la Semana 10.
+    Este archivo documenta solo lo que se valida en S11.
+
+    Los tokens son ficticios y sirven únicamente para el laboratorio local:
+    - ana-laboratorio usa el token lab-token-autorizado y sí puede crear pedidos.
+    - luis-laboratorio usa el token lab-token-sin-permiso. El token es válido, pero no puede crear pedidos ni ver pedidos ajenos.
+
+    La pantalla y las pruebas Cypress siguen usando /api/products y /api/orders sin token.
+    Esas rutas no forman parte de este contrato.
+servers:
+  - url: http://localhost:3000
+    description: API local
+tags:
+  - name: Productos
+    description: Consulta paginada del menú.
+  - name: Pedidos
+    description: Crear, consultar y actualizar pedidos protegidos.
+  - name: Pruebas
+    description: Preparación de datos locales.
+paths:
+  /api/productos:
+    get:
+      tags: [Productos]
+      operationId: listarProductos
+      summary: Listar productos con paginación
+      description: |
+        Devuelve una página del menú.
+        Si la página existe pero ya no hay productos, responde 200 con data vacía, count 0 y el total real.
+        page y limit son opcionales. Si no se envían, se usan page 1 y limit 5.
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Página de productos.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductosPaginados"
+              example:
+                data:
+                  - id: 1
+                    name: Café Americano
+                    priceCents: 3500
+                    stock: 20
+                  - id: 2
+                    name: Cappuccino
+                    priceCents: 4500
+                    stock: 15
+                page: 1
+                limit: 2
+                total: 4
+                count: 2
+        "400":
+          description: La página o el límite no son válidos.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: La página debe ser un entero mayor o igual que 1.
+
+  /api/pedidos:
+    post:
+      tags: [Pedidos]
+      operationId: crearPedido
+      summary: Crear un pedido protegido
+      description: |
+        Crea un pedido para el usuario del token.
+        Solo el rol cliente puede crearlo. El invitado recibe 403.
+        Al crearlo se descuenta el stock y el estado inicial queda en confirmed.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearPedido"
+            example:
+              items:
+                - productId: 1
+                  quantity: 1
+      responses:
+        "201":
+          description: Pedido creado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pedido"
+        "400":
+          description: Faltan campos o los datos del pedido no son válidos.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                sinItems:
+                  summary: Faltan los productos
+                  value:
+                    error: El pedido no puede estar vacío.
+                cantidad:
+                  summary: Cantidad inválida
+                  value:
+                    error: La cantidad debe ser un entero mayor que cero.
+        "401":
+          description: No se envió token o el token no existe.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                sinToken:
+                  summary: Sin credenciales
+                  value:
+                    error: Falta el token de autenticación.
+                tokenMal:
+                  summary: Token inválido
+                  value:
+                    error: El token no es válido.
+        "403":
+          description: El token es válido, pero ese usuario no puede crear pedidos.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: No tienes permiso para crear pedidos.
+        "409":
+          description: No hay stock suficiente. No se guarda el pedido.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/pedidos/{id}:
+    get:
+      tags: [Pedidos]
+      operationId: consultarPedido
+      summary: Consultar un pedido protegido
+      description: |
+        Devuelve el pedido solo si pertenece al usuario del token.
+        Un token válido de otro usuario recibe 403.
+        Un id que no existe recibe 404.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/pedidoId"
+      responses:
+        "200":
+          description: Pedido del usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pedido"
+        "400":
+          description: El id no es un entero positivo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No se envió token o el token no existe.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: El pedido existe, pero es de otro usuario.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: No puedes consultar un pedido de otro usuario.
+        "404":
+          description: No existe un pedido con ese id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: No se encontró el pedido.
+
+  /api/pedidos/{id}/estado:
+    put:
+      tags: [Pedidos]
+      operationId: actualizarEstado
+      summary: Asignar el estado de un pedido
+      description: |
+        Operación idempotente. Asigna el estado enviado y deja el pedido en ese estado.
+        Repetir exactamente la misma petición no crea otro pedido, no cambia el total
+        y no vuelve a descontar el stock.
+
+        Cómo se comprueba: se envía dos veces status listo. Después se consulta el pedido,
+        el menú y la lista de órdenes. El estado sigue en listo, el total es el mismo,
+        el stock no bajó otra vez y sigue existiendo un solo pedido.
+        La prueba S11-11 revisa ese efecto final, no solo que las dos respuestas HTTP sean iguales.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/pedidoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActualizarEstado"
+            example:
+              status: listo
+      responses:
+        "200":
+          description: El pedido quedó en el estado indicado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pedido"
+        "400":
+          description: El id o el estado no son válidos.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: No se envió token o el token no existe.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: El pedido es de otro usuario.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No existe un pedido con ese id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/test/reset:
+    post:
+      tags: [Pruebas]
+      operationId: reiniciarDatos
+      summary: Reiniciar los datos de prueba
+      description: |
+        Borra los pedidos y vuelve a cargar los cuatro productos con su stock inicial.
+        Cada caso de Postman lo llama al empezar, así que no dependen de una ejecución anterior.
+        Es un endpoint local de laboratorio. No debe exponerse en un sistema público.
+      responses:
+        "200":
+          description: Datos listos para probar.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResetResultado"
+              example:
+                ok: true
+                orders: 0
+                products:
+                  - id: 1
+                    name: Café Americano
+                    priceCents: 3500
+                    stock: 20
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Token ficticio de laboratorio. Se envía como Authorization: Bearer <token>.
+        ana-laboratorio: lab-token-autorizado
+        luis-laboratorio: lab-token-sin-permiso
+        Un valor distinto responde 401.
+  parameters:
+    page:
+      name: page
+      in: query
+      required: false
+      description: Número de página. Empieza en 1.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    limit:
+      name: limit
+      in: query
+      required: false
+      description: Cantidad máxima de productos en la página. Entre 1 y 20.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 20
+        default: 5
+    pedidoId:
+      name: id
+      in: path
+      required: true
+      description: Identificador numérico del pedido.
+      schema:
+        type: integer
+        minimum: 1
+  schemas:
+    Producto:
+      type: object
+      additionalProperties: false
+      required: [id, name, priceCents, stock]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        priceCents:
+          type: integer
+          description: Precio en centavos.
+        stock:
+          type: integer
+          minimum: 0
+    ProductosPaginados:
+      type: object
+      additionalProperties: false
+      required: [data, page, limit, total, count]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Producto"
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+          description: Total de productos en el menú.
+        count:
+          type: integer
+          minimum: 0
+          description: Cantidad de productos devueltos en esta página.
+    PedidoItem:
+      type: object
+      additionalProperties: false
+      required: [productId, name, quantity, unitPriceCents, subtotalCents]
+      properties:
+        productId:
+          type: integer
+        name:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+          description: Cantidad de unidades. El contrato exige un entero, no un texto.
+        unitPriceCents:
+          type: integer
+        subtotalCents:
+          type: integer
+    Pedido:
+      type: object
+      additionalProperties: false
+      required: [id, code, totalCents, total, status, owner, createdAt, items]
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        totalCents:
+          type: integer
+        total:
+          type: string
+        status:
+          type: string
+          enum: [confirmed, preparando, listo]
+        owner:
+          type: string
+          description: Usuario dueño del pedido.
+        createdAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PedidoItem"
+    CrearPedido:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [productId, quantity]
+            properties:
+              productId:
+                type: integer
+                minimum: 1
+              quantity:
+                type: integer
+                minimum: 1
+    ActualizarEstado:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [confirmed, preparando, listo]
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+    Usuario:
+      type: object
+      additionalProperties: false
+      description: |
+        Usuarios ficticios del laboratorio. No hay un endpoint que los liste.
+        La API los reconoce por el token Bearer.
+      required: [id, name, role]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [cliente, invitado]
+    ResetResultado:
+      type: object
+      additionalProperties: false
+      required: [ok, orders, products]
+      properties:
+        ok:
+          type: boolean
+        orders:
+          type: integer
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/Producto"

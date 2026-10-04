@@ -1,0 +1,10 @@
+flowchart TD
+  postman[Postman]
+  contrato[OpenAPI 3.1]
+  api[API Express]
+  db[(SQLite)]
+
+  postman -->|ejecuta la coleccion| api
+  contrato -.->|contrato que Postman comprueba| postman
+  contrato -.->|documenta la API| api
+  api -->|lee y guarda pedidos| db

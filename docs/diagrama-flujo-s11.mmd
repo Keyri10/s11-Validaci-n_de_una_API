@@ -1,0 +1,17 @@
+flowchart TD
+  preparar[Preparar datos]
+  ejecutar[Ejecutar coleccion]
+  respuesta[Validar respuesta]
+  reglas[Validar reglas]
+  efecto[Validar efecto]
+  resultado{Resultado}
+  passNode[PASS]
+  failNode[FAIL]
+
+  preparar --> ejecutar
+  ejecutar --> respuesta
+  respuesta --> reglas
+  reglas --> efecto
+  efecto --> resultado
+  resultado -->|cumple| passNode
+  resultado -->|no cumple| failNode
